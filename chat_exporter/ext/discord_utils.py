@@ -3,10 +3,11 @@ class DiscordUtils:
     default_avatar: str = "https://cdn.jsdelivr.net/gh/mahtoid/DiscordUtils@master/discord-default.png"
     pinned_message_icon: str = "https://cdn.jsdelivr.net/gh/mahtoid/DiscordUtils@master/discord-pinned.svg"
     thread_channel_icon: str = "https://cdn.jsdelivr.net/gh/mahtoid/DiscordUtils@master/discord-thread.svg"
-    thread_remove_recipient: str = (
+    call_icon: str = "https://discord.com/assets/61ccab047dad737a.svg"
+    remove_recipient: str = (
         "https://cdn.jsdelivr.net/gh/mahtoid/DiscordUtils@master/discord-thread-remove-recipient.svg"
     )
-    thread_add_recipient: str = (
+    add_recipient: str = (
         "https://cdn.jsdelivr.net/gh/mahtoid/DiscordUtils@master/discord-thread-add-recipient.svg"
     )
     file_attachment_audio: str = "https://cdn.jsdelivr.net/gh/mahtoid/DiscordUtils@master/discord-audio.svg"
