@@ -27,8 +27,12 @@ from chat_exporter.ext.html_generator import (
     message_reference,
     message_reference_unknown,
     message_thread,
-    message_thread_add,
-    message_thread_remove,
+    message_recipient_remove,
+    message_recipient_add,
+    message_recipient_leave,
+    message_channel_name_change,
+    message_channel_icon_change,
+    message_call,
     start_message,
 )
 
@@ -68,6 +72,7 @@ class MessageConstruct:
         meta_data: dict,
         message_dict: dict,
         attachment_handler: Optional[AttachmentHandler],
+        bot: discord.Client
     ):
         self.message = message
         self.rendered_content = ""
@@ -75,6 +80,7 @@ class MessageConstruct:
         self.pytz_timezone = pytz_timezone
         self.military_time = military_time
         self.guild = guild
+        self.bot = bot
         self.message_dict = message_dict
         self.attachment_handler = attachment_handler
         self.time_format = "%A, %e %B %Y %I:%M %p"
@@ -133,9 +139,15 @@ class MessageConstruct:
         elif discord.MessageType.thread_created == self.message.type:
             await self.build_thread()
         elif discord.MessageType.recipient_remove == self.message.type:
-            await self.build_thread_remove()
+            await self.build_recipient_remove()
         elif discord.MessageType.recipient_add == self.message.type:
-            await self.build_thread_add()
+            await self.build_recipient_add()
+        elif discord.MessageType.call == self.message.type:
+            await self.build_call()
+        elif discord.MessageType.channel_name_change == self.message.type:
+            await self.build_channel_name_change()
+        elif discord.MessageType.channel_icon_change == self.message.type:
+            await self.build_channel_icon_change()
         else:
             await self.build_message()
         return self.message_html, self.meta_data
@@ -158,13 +170,25 @@ class MessageConstruct:
         await self.generate_message_divider(channel_audit=True)
         await self.build_thread_template()
 
-    async def build_thread_remove(self):
+    async def build_recipient_remove(self):
         await self.generate_message_divider(channel_audit=True)
         await self.build_remove()
 
-    async def build_thread_add(self):
+    async def build_recipient_add(self):
         await self.generate_message_divider(channel_audit=True)
         await self.build_add()
+
+    async def build_call(self):
+        await self.generate_message_divider(channel_audit=True)
+        await self.build_call_template()
+
+    async def build_channel_name_change(self):
+        await self.generate_message_divider(channel_audit=True)
+        await self.build_channel_name_change_template()
+
+    async def build_channel_icon_change(self):
+        await self.generate_message_divider(channel_audit=True)
+        await self.build_channel_icon_change_template()
 
     async def build_meta_data(self):
         user_id = self.message.author.id
@@ -602,11 +626,25 @@ class MessageConstruct:
 
     async def build_remove(self):
         removed_member: discord.Member = self.message.mentions[0]
-        self.message_html += await fill_out(
-            self.guild,
-            message_thread_remove,
-            [
-                ("THREAD_URL", DiscordUtils.thread_remove_recipient, PARSE_MODE_NONE),
+        if removed_member.id == self.message.author.id:
+            self.message_html += await fill_out(
+                self.guild, 
+                message_recipient_leave, [
+                ("REMOVE_URL", DiscordUtils.remove_recipient,
+                PARSE_MODE_NONE),
+                ("USER_COLOUR", await self._gather_user_colour(self.message.author)),
+                ("NAME", str(html.escape(self.message.author.display_name))),
+                (
+                    "NAME_TAG",
+                    await discriminator(self.message.author.name, self.message.author.discriminator),
+                    PARSE_MODE_NONE,
+                ),
+                ("MESSAGE_ID", str(self.message.id), PARSE_MODE_NONE),
+            ])      
+        else:
+            self.message_html += await fill_out(self.guild, message_recipient_remove, [
+                ("REMOVE_URL", DiscordUtils.remove_recipient,
+                PARSE_MODE_NONE),
                 ("USER_COLOUR", await self._gather_user_colour(self.message.author)),
                 ("NAME", str(html.escape(self.message.author.display_name))),
                 (
@@ -622,6 +660,11 @@ class MessageConstruct:
                     PARSE_MODE_NONE,
                 ),
                 ("MESSAGE_ID", str(self.message.id), PARSE_MODE_NONE),
+                (
+                    "CHANNEL_TYPE",
+                    'group' if isinstance (self.message.channel, discord.GroupChannel) else 'thread',
+                    PARSE_MODE_NONE,
+                ),
             ],
         )
 
@@ -629,9 +672,10 @@ class MessageConstruct:
         removed_member: discord.Member = self.message.mentions[0]
         self.message_html += await fill_out(
             self.guild,
-            message_thread_add,
+            message_recipient_add,
             [
-                ("THREAD_URL", DiscordUtils.thread_add_recipient, PARSE_MODE_NONE),
+                ("ADD_URL", DiscordUtils.add_recipient,
+                PARSE_MODE_NONE),
                 ("USER_COLOUR", await self._gather_user_colour(self.message.author)),
                 ("NAME", str(html.escape(self.message.author.display_name))),
                 (
@@ -647,18 +691,88 @@ class MessageConstruct:
                     PARSE_MODE_NONE,
                 ),
                 ("MESSAGE_ID", str(self.message.id), PARSE_MODE_NONE),
+                (
+                    "CHANNEL_TYPE",
+                    'group' if isinstance (self.message.channel, discord.GroupChannel) else 'thread',
+                    PARSE_MODE_NONE,
+                ),
+            ],
+        )
+
+    async def build_channel_name_change_template(self):
+        self.message_html += await fill_out(
+            self.guild,
+            message_channel_name_change,
+            [
+                ("NAME_URL", DiscordUtils.pinned_message_icon,
+                PARSE_MODE_NONE),
+                ("USER_COLOUR", await self._gather_user_colour(self.message.author)),
+                ("NAME", str(html.escape(self.message.author.display_name))),
+                (
+                    "NAME_TAG",
+                    await discriminator(self.message.author.name, self.message.author.discriminator),
+                    PARSE_MODE_NONE,
+                ),
+                ("MESSAGE_ID", str(self.message.id), PARSE_MODE_NONE),
+                (
+                    "CHANNEL_TYPE",
+                    'group' if isinstance (self.message.channel, discord.GroupChannel) else 'channel',
+                    PARSE_MODE_NONE,
+                ),
+                ("CHANNEL_NAME", str(self.message.channel), PARSE_MODE_NONE),
+            ],
+        )
+
+    async def build_channel_icon_change_template(self):
+        self.message_html += await fill_out(
+            self.guild,
+            message_channel_icon_change,
+            [
+                ("ICON_URL", DiscordUtils.pinned_message_icon,
+                PARSE_MODE_NONE),
+                ("USER_COLOUR", await self._gather_user_colour(self.message.author)),
+                ("NAME", str(html.escape(self.message.author.display_name))),
+                (
+                    "NAME_TAG",
+                    await discriminator(self.message.author.name, self.message.author.discriminator),
+                    PARSE_MODE_NONE,
+                ),
+                ("MESSAGE_ID", str(self.message.id), PARSE_MODE_NONE),
+                (
+                    "CHANNEL_TYPE",
+                    'group' if isinstance (self.message.channel, discord.GroupChannel) else 'channel',
+                    PARSE_MODE_NONE,
+                ),
+            ],
+        )
+
+    async def build_call_template(self):
+        self.message_html += await fill_out(
+            self.guild,
+            message_call,
+            [
+                ("CALL_URL", DiscordUtils.call_icon, PARSE_MODE_NONE),
+                ("USER_COLOUR", await self._gather_user_colour(self.message.author)),
+                ("NAME", str(html.escape(self.message.author.display_name))),
+                (
+                    "NAME_TAG",
+                    await discriminator(self.message.author.name, self.message.author.discriminator),
+                    PARSE_MODE_NONE,
+                ),
+                ("MESSAGE_ID", str(self.message.id), PARSE_MODE_NONE),
+                ("TIMESTAMP", str(int(self.message.call.ended_timestamp - discord.utils.snowflake_time(self.message.id))) if self.message.call.ended_timestamp else 'unknown', PARSE_MODE_NONE)
             ],
         )
 
     @cache()
     async def _gather_member(self, author: discord.Member):
-        member = self.guild.get_member(author.id)
+        member = self.bot.get_user(author.id)
 
         if member:
             return member
 
         try:
-            return await self.guild.fetch_member(author.id)
+            return await self.bot.fetch_user(author.id)
         except Exception:
             return None
 
@@ -701,6 +815,7 @@ async def gather_messages(
     pytz_timezone,
     military_time,
     attachment_handler: Optional[AttachmentHandler],
+    bot: discord.Client
 ) -> (str, dict):
     message_html_chunks: List[str] = []
     meta_data: dict = {}
@@ -728,7 +843,8 @@ async def gather_messages(
             meta_data,
             message_dict,
             attachment_handler,
-        ).construct_message()
+            bot
+            ).construct_message()
 
         message_html_chunks.append(content_html)
         previous_message = message

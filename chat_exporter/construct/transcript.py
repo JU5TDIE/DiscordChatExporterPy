@@ -43,6 +43,7 @@ class TranscriptDAO:
         attachment_handler: Optional[AttachmentHandler],
         raise_exceptions: bool = False,
     ):
+        self.bot = bot
         self.channel = channel
         self.messages = messages
         self.limit = int(limit) if limit else None
@@ -63,7 +64,8 @@ class TranscriptDAO:
 
     async def build_transcript(self):
         message_html, meta_data = await gather_messages(
-            self.messages, self.channel.guild, self.pytz_timezone, self.military_time, self.attachment_handler
+            self.messages, self.channel.guild, self.pytz_timezone, self.military_time, self.attachment_handler,
+            self.bot
         )
         await self.export_transcript(message_html, meta_data)
         clear_cache()
@@ -71,13 +73,13 @@ class TranscriptDAO:
         return self
 
     async def export_transcript(self, message_html: str, meta_data: str):
-        guild_icon = (
+        icon = (
             self.channel.guild.icon
-            if (self.channel.guild.icon and len(self.channel.guild.icon) > 2)
+            if (self.channel.guild and self.channel.guild.icon and len(self.channel.guild.icon) > 2)
             else DiscordUtils.default_avatar
         )
 
-        guild_name = html.escape(self.channel.guild.name)
+        name = html.escape(self.channel.guild.name if self.channel.guild else str(self.channel))
 
         timezone = pytz.timezone(self.pytz_timezone)
         if self.military_time:
@@ -109,7 +111,7 @@ class TranscriptDAO:
                         ("BOT", str(meta_data[int(data)][2]), PARSE_MODE_NONE),
                         ("CREATED_AT", str(creation_time), PARSE_MODE_NONE),
                         ("JOINED_AT", str(joined_time), PARSE_MODE_NONE),
-                        ("GUILD_ICON", str(guild_icon), PARSE_MODE_NONE),
+                        ("GUILD_ICON", str(icon), PARSE_MODE_NONE),
                         ("DISCORD_ICON", str(DiscordUtils.logo), PARSE_MODE_NONE),
                         ("MEMBER_ID", str(data), PARSE_MODE_NONE),
                         ("USER_AVATAR", str(meta_data[int(data)][3]), PARSE_MODE_NONE),
@@ -145,7 +147,7 @@ class TranscriptDAO:
             channel_subject,
             [
                 ("LIMIT", limit, PARSE_MODE_NONE),
-                ("CHANNEL_NAME", self.channel.name),
+                ("CHANNEL_NAME", str(self.channel)),
                 ("RAW_CHANNEL_TOPIC", str(raw_channel_topic)),
             ],
         )
@@ -174,10 +176,10 @@ class TranscriptDAO:
             self.channel.guild,
             total,
             [
-                ("SERVER_NAME", f"{guild_name}"),
-                ("GUILD_ID", str(self.channel.guild.id), PARSE_MODE_NONE),
-                ("SERVER_AVATAR_URL", str(guild_icon), PARSE_MODE_NONE),
-                ("CHANNEL_NAME", f"{self.channel.name}"),
+                ("SERVER_NAME", f"{name}"),
+                ("GUILD_ID", str(self.channel.guild.id) if self.channel.guild else None, PARSE_MODE_NONE),
+                ("SERVER_AVATAR_URL", str(icon), PARSE_MODE_NONE),
+                ("CHANNEL_NAME", f"{str(self.channel)}"),
                 ("MESSAGE_COUNT", str(len(self.messages)), PARSE_MODE_NONE),
                 ("MESSAGES", message_html, PARSE_MODE_NONE),
                 ("META_DATA", meta_data_html, PARSE_MODE_NONE),
@@ -189,8 +191,8 @@ class TranscriptDAO:
                 ("MESSAGE_PARTICIPANTS", str(len(meta_data)), PARSE_MODE_NONE),
                 ("FANCY_TIME", _fancy_time, PARSE_MODE_NONE),
                 ("SD", sd, PARSE_MODE_NONE),
-                ("SERVER_NAME_SAFE", f"{guild_name}", PARSE_MODE_HTML_SAFE),
-                ("CHANNEL_NAME_SAFE", f"{html.escape(self.channel.name)}", PARSE_MODE_HTML_SAFE),
+                ("SERVER_NAME_SAFE", f"{name}", PARSE_MODE_HTML_SAFE),
+                ("CHANNEL_NAME_SAFE", f"{html.escape(str(self.channel))}", PARSE_MODE_HTML_SAFE),
             ],
         )
 
