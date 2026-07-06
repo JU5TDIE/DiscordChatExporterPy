@@ -38,13 +38,28 @@ class AttachmentToLocalFileHostHandler(AttachmentHandler):
         :param attachment: discord.Attachment
         :return: str
         """
-        file_name = urllib.parse.quote_plus(f"{datetime.datetime.utcnow().timestamp()}_{attachment.filename}")
+        file_name = urllib.parse.quote_plus(f"{attachment.id}_{attachment.filename}")
         asset_path = self.base_path / file_name
         await attachment.save(asset_path)
         file_url = f"{self.url_base}/{file_name}"
         attachment.url = file_url
         attachment.proxy_url = file_url
         return attachment
+
+    async def process_real_asset(self, asset: discord.Asset) -> discord.Asset:
+        """Implement this to process the real discord.Asset and return a url to the stored attachment.
+        :param asset: discord.Asset
+        :return: str
+        """
+        file_name = os.path.basename(urllib.parse.urlparse(asset.url).path)
+        asset_path = self.base_path / file_name
+
+        if not os.path.exists(asset_path):
+            await asset.save(asset_path)
+            
+        file_url = f"{self.url_base}/{file_name}"
+        asset.url = file_url
+        return asset
 
 
 class AttachmentToDiscordChannelHandler(AttachmentHandler):
